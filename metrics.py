@@ -449,14 +449,14 @@ def novelty(object, anonymous=False):
     # however since no cutoff at per user recommendations is applied and 
     # also since each recommendation entry is one-to-one <user id> <service id> 
     # then the total number of recommendations is equal to this sum
-    norm=sum(d_service.values())    
+    norm=sum(d_service.values())
 
     # get the max novelty by getting the service with the lowest item_count
     max_nov=-math.log2(min(d_service.values())/norm)
 
     # calculate novelty for all services
     d_service = {service: -math.log2(item_count/norm) for service, item_count in d_service.items()} # fix user_actions not recommendations to gather services
- 
+
     # get all unique users found in recommendations
     users = recs['User'].unique()
 
