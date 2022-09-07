@@ -343,9 +343,9 @@ def click_through_rate(object):
 
 
 @metric('The diversity of the recommendations according to Shannon Entropy. The entropy is 0 when a single item is always chosen or recommended, and log n when n items are chosen or recommended equally often.')
-def diversity(object, anonymous=False):
+def diversity_shannon(object, anonymous=False):
     """
-    Calculate Shannon Entropy based on https://elliot.readthedocs.io/en/latest/guide/metrics/diversity.html?highlight=entropy#module-elliot.evaluation.metrics.diversity.shannon_entropy.shannon_entropy. The entropy is 0 when a single item is always chosen or recommended, and log n when n items are chosen or recommended equally often. (see book https://link.springer.com/10.1007/978-1-4939-7131-2_110158) . See more in https://link.springer.com/content/pdf/10.1007/978-1-4899-7637-6.pdf, page 293.
+    Calculate Shannon Entropy. The entropy is 0 when a single item is always chosen or recommended, and log n when n items are chosen or recommended equally often.
     """
     # keep recommendations with or without anonymous suggestions
     # based on anonymous flag (default=False, i.e. ignore anonymous)
@@ -385,30 +385,15 @@ def diversity(object, anonymous=False):
     # key=<service id> and value=<item_count>
     d_service=gr_service['User'].to_dict()
 
-    # it loops here for each service id, where
-    # key=service_id
-    for key in d_service:
-        # the impact of the service is calculated here
-        # the below line creates a list of the user ids
-        # where this particular service was suggested to 
-        # the user list can contain duplicate users, 
-        # because the same service might be suggested to 
-        # the same user more than once
-        # for each element of the user list the associated 
-        # user_norm value is found from the d_user dictionary
-        # when all user_norm are found, then they summed up 
-        # to determine the weight of the service
-        weight=sum(list(map(lambda x: 1./d_user[x],recs[(recs['Service']==key)]['User'].tolist())))
+    recommended_counter = np.array(list(d_service.values()))
 
-        # this line calculates the Shannon Entropy of each particular 
-        # service id and stores it to the d_service dictionary accordingly
-        # initially, the d_service[key] contains the item_count of each service 
-        d_service[key]=-weight*math.log2(d_service[key]/free_norm)
+    n_recommendations = recommended_counter.sum()
 
-    # an overall value of the Shannon Entropy is returned by 
-    # summing all indivual ones and divide them by the number 
-    # of unique users
-    return round(sum(d_service.values())/len(d_user),4)
+    recommended_probability = recommended_counter/n_recommendations
+
+    shannon_entropy = -np.sum(recommended_probability * np.log2(recommended_probability))
+
+    return round(shannon_entropy,4)
 
 
 @metric('Calculate novelty (Expected Free Discovery -EFD-) as the expected Inverse Collection Frequency -ICF- of (relevant and seen) recommended items')
