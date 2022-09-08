@@ -343,7 +343,7 @@ def click_through_rate(object):
 
 
 @metric('The diversity of the recommendations according to Shannon Entropy. The entropy is 0 when a single item is always chosen or recommended, and log n when n items are chosen or recommended equally often.')
-def diversity_shannon(object, anonymous=False):
+def diversity(object, anonymous=False):
     """
     Calculate Shannon Entropy. The entropy is 0 when a single item is always chosen or recommended, and log n when n items are chosen or recommended equally often.
     """
@@ -385,12 +385,18 @@ def diversity_shannon(object, anonymous=False):
     # key=<service id> and value=<item_count>
     d_service=gr_service['User'].to_dict()
 
-    recommended_counter = np.array(list(d_service.values()))
+    # each element represent the service's recommendations occurance
+    # e.g. [1,6,7]
+    # a service was recommended 1 time, another 6 times and another 7 times
+    services_recommendation_count = np.array(list(d_service.values()))
 
-    n_recommendations = recommended_counter.sum()
+    # the total number of recommendations
+    n_recommendations = services_recommendation_count.sum()
 
-    recommended_probability = recommended_counter/n_recommendations
+    # element-wise computations (division for each service's recommendations occurance)
+    recommended_probability = services_recommendation_count/n_recommendations
 
+    # H=-Sum(p*logp) [element-wise]
     shannon_entropy = -np.sum(recommended_probability * np.log2(recommended_probability))
 
     return round(shannon_entropy,4)
