@@ -500,16 +500,17 @@ def diversity_gini(object, anonymous=False):
     # key=<service id> and value=<item_count>
     d_service=gr_service['User'].to_dict()
 
+    services_recommendation_count=np.array(list(d_service.values()))
 
-    n_recommended_items = len(d_service)
-    num_items = services(object)
+    n_items = len(services_recommendation_count)
 
-    gini = sum([(2 * (j + 1 + num_items-n_recommended_items) -num_items -1) * (cs / free_norm) for j, cs in enumerate(sorted(d_service.values()))])
+    services_recommendation_count_sorted = np.sort(services_recommendation_count)       # values must be sorted
+    index = np.arange(1, n_items+1)                                 # index per array element
 
-    gini /= (num_items - 1)
-    gini = 1 - gini
+    gini_index = (np.sum((2 * index - n_items  - 1) * services_recommendation_count_sorted)) / (n_items * np.sum(services_recommendation_count_sorted))
+    #gini_diversity = 2*np.sum((n_items + 1 - index)/(n_items+1) * recommended_counter_sorted/np.sum(recommended_counter_sorted))
 
-    return round(gini,4)
+    return round(gini_index,4)
 
 @metric('The Top 5 recommended services according to recommendations entries')
 def top5_services_recommended(object, k=5, base='https://marketplace.eosc-portal.eu', anonymous=False):
