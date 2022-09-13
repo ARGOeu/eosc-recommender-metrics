@@ -502,12 +502,10 @@ def diversity_gini(object, anonymous=False):
 
 
     n_recommended_items = len(d_service)
-    num_items = services(object)
 
-    gini = sum([(2 * (j + 1 + num_items-n_recommended_items) -num_items -1) * (cs / free_norm) for j, cs in enumerate(sorted(d_service.values()))])
+    gini = sum([(2*(j + 1) -n_recommended_items -1) * (cs / free_norm) for j, cs in enumerate(sorted(d_service.values()))])
 
-    gini /= (num_items - 1)
-    gini = 1 - gini
+    gini /= (n_recommended_items - 1)
 
     return round(gini,4)
 
