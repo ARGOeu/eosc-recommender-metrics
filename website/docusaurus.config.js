@@ -1,10 +1,26 @@
 // @ts-check
 // Note: type annotations allow type checking and IDEs autocompletion
 
-const lightCodeTheme = require('prism-react-renderer/themes/github');
-const darkCodeTheme = require('prism-react-renderer/themes/dracula');
-const math = require('remark-math');
-const katex = require('rehype-katex');
+const lightCodeTheme = require('prism-react-renderer').themes.github;
+const darkCodeTheme = require('prism-react-renderer').themes.dracula;
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+
+const copyrightMessage = `
+<p xmlns:cc="http://creativecommons.org/ns#">
+   This work by
+   <a rel="cc:attributionURL dct:creator" property="cc:attributionName" href="https://www.grnet.gr">
+      National Infrastructures for Research and Technology - GRNET S.A.</a> is licensed under
+   <a href="http://creativecommons.org/licenses/by/4.0/?ref=chooser-v1" target="_blank"
+      rel="license noopener noreferrer" style="display:inline-block;">
+      CC BY 4.0
+      <img style="height:22px!important;margin-left:3px;vertical-align:text-bottom;"
+         src="https://mirrors.creativecommons.org/presskit/icons/cc.svg?ref=chooser-v1">
+      <img style="height:22px!important;margin-left:3px;vertical-align:text-bottom;"
+         src="https://mirrors.creativecommons.org/presskit/icons/by.svg?ref=chooser-v1">
+   </a>
+</p>
+`
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
@@ -35,8 +51,8 @@ const config = {
       /** @type {import('@docusaurus/preset-classic').Options} */
       ({
         docs: {
-          remarkPlugins: [math],
-          rehypePlugins: [katex],
+          remarkPlugins: [remarkMath],
+          rehypePlugins: [rehypeKatex],
           sidebarPath: require.resolve('./sidebars.js'),
           // Please change this to your repo.
           // Remove this to remove the "edit this page" links.
@@ -89,12 +105,7 @@ const config = {
         ],
       },
       footer: {
-        style: 'dark',
-        logo: {
-          alt: 'GRNET',
-          src: 'img/grnet-logo.png',
-          href: 'http://www.grnet.gr/',
-        },
+        style: 'light',
         links: [
           {
             title: 'Docs',
@@ -115,7 +126,7 @@ const config = {
             ],
           },
         ],
-        copyright: `Copyright © ${new Date().getFullYear()} GRNET`,
+        copyright: copyrightMessage,
       },
       prism: {
         theme: lightCodeTheme,

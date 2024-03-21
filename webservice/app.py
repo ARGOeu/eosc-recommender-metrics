@@ -19,6 +19,9 @@ app.config["RSEVAL_METRIC_DESC_DIR"] = os.environ.get(
 app.config["RSEVAL_STREAM_USER_ACTIONS_JOBNAME"] = os.environ.get(
     "RSEVAL_STREAM_USER_ACTIONS_JOBNAME"
 )
+app.config["RSEVAL_STREAM_RECOMMENDATIONS_JOBNAME"] = os.environ.get(
+    "RSEVAL_STREAM_RECOMMENDATIONS_JOBNAME"
+)
 app.config["RSEVAL_STREAM_MP_DB_EVENTS_JOBNAME"] = os.environ.get(
     "RSEVAL_STREAM_MP_DB_EVENTS_JOBNAME"
 )
@@ -137,10 +140,12 @@ def html_metrics(report_name):
         "recommended_items",
         "items",
         "user_actions",
+        "user_actions_all",
         "user_actions_registered",
         "user_actions_registered_perc",
         "user_actions_anonymous",
         "user_actions_anonymous_perc",
+        "item_views_all",
         "item_views",
         "item_views_registered",
         "item_views_registered_perc",
@@ -165,7 +170,9 @@ def html_metrics(report_name):
     for metric_name in metrics_needed:
         result[metric_name] = get_metric(report_name, metric_name).get_json()
 
-    result["timestamp"] = get_api_index(report_name).get_json()["timestamp"]
+    data = get_api_index(report_name).get_json()
+    result["timestamp"] = data.get("timestamp")
+    result["errors"] = data.get("errors")
     result["report"] = report_name
     result["reports"] = reports
     result["sidebar_info"] = app.sidebar_info
@@ -191,17 +198,19 @@ def html_kpis(report_name):
     metrics_needed = [
         "hit_rate",
         "click_through_rate",
-        "top5_items_ordered",
+        "top5_items_viewed",
         "top5_items_recommended",
-        "top5_categories_ordered",
+        "top5_categories_viewed",
         "top5_categories_recommended",
-        "top5_scientific_domains_ordered",
+        "top5_scientific_domains_viewed",
         "top5_scientific_domains_recommended",
     ]
     for metric_name in metrics_needed:
         result[metric_name] = get_metric(report_name, metric_name).get_json()
 
-    result["timestamp"] = get_api_index(report_name).get_json()["timestamp"]
+    data = get_api_index(report_name).get_json()
+    result["timestamp"] = data.get("timestamp")
+    result["errors"] = data.get("errors")
     result["sidebar_info"] = app.sidebar_info
     result["report"] = report_name
     result["reports"] = reports
@@ -224,7 +233,9 @@ def html_graphs(report_name):
     for stat_name in stats_needed:
         result[stat_name] = get_statistic(report_name, stat_name).get_json()
 
-    result["timestamp"] = get_api_index(report_name).get_json()["timestamp"]
+    data = get_api_index(report_name).get_json()
+    result["timestamp"] = data.get("timestamp")
+    result["errors"] = data.get("errors")
     result["sidebar_info"] = app.sidebar_info
     result["report"] = report_name
     result["reports"] = reports
@@ -337,6 +348,7 @@ def diag():
     stream_status = 0
     stream_ua = 0
     stream_mpdb = 0
+    stream_rec = 0
 
     # check mongo connectivity with a sensible timeout of 3sec
     mongo_check = PyMongo(
@@ -360,6 +372,12 @@ def diag():
             )
             if job_ua_info["statename"] == "RUNNING":
                 stream_ua = 1
+
+            job_rec_info = rpc_srv.supervisor.getProcessInfo(
+                app.config["RSEVAL_STREAM_RECOMMENDATIONS_JOBNAME"]
+            )
+            if job_rec_info["statename"] == "RUNNING":
+                stream_rec = 1
 
             job_mpdb_info = rpc_srv.supervisor.getProcessInfo(
                 app.config["RSEVAL_STREAM_MP_DB_EVENTS_JOBNAME"]
@@ -388,6 +406,9 @@ def diag():
                 "status": print_status(stream_status),
                 "RS_streaming_user_actions": {
                     "status": print_status(stream_ua)
+                },
+                "RS_streaming_recommendations": {
+                    "status": print_status(stream_rec)
                 },
                 "RS_streaming_mp_events": {
                     "status": print_status(stream_mpdb)

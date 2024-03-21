@@ -7,8 +7,9 @@ import yaml
 import pymongo
 from datetime import datetime
 import pandas as pd
+import numpy as np
 from inspect import getmembers, isfunction
-from pymongoarrow.api import find_pandas_all, aggregate_pandas_all
+from pymongoarrow.api import aggregate_pandas_all
 import logging
 
 # local lib
@@ -76,11 +77,20 @@ optional.add_argument(
 optional.add_argument(
     "-p",
     "--provider",
-    metavar=("DIRPATH"),
-    help=("source of the data based on providers specified "
+    metavar=("STRING"),
+    help=("name of the provider-rs specified "
           "in the configuration file"),
     nargs="?",
     default="marketplace_rs",
+    type=str,
+)
+optional.add_argument(
+    "-t",
+    "--tag",
+    metavar=("STRING"),
+    help=("tag results e.g. year-month"),
+    nargs="?",
+    default="",
     type=str,
 )
 optional.add_argument(
@@ -107,6 +117,13 @@ based on legacy schema"), action="store_true")
 optional.add_argument(
     "--use-cache",
     help=("Enable to perform calculations without resources' retrieval"),
+    action="store_true",
+)
+
+optional.add_argument(
+    "--ignore-timestamp",
+    help=("Enable to perform calculations without checking if items are \
+within the requested datetime range"),
     action="store_true",
 )
 
@@ -157,10 +174,10 @@ if not args.use_cache:
     _args.limit = -1
     _args.datastore = config["datastore"]
     _args.url = config['service']['service_list_url']
-    _args.providers = args.provider
+    _args.provider = args.provider
 
     try:
-        for cat in config['service']['category'][_args.providers]:
+        for cat in config['service']['category'][_args.provider]:
             _args.category = cat
             get_catalog.main(_args)
     except Exception as e:
@@ -223,9 +240,16 @@ match_rs = {**match_query, "provider": args.provider}
 # panda data frames using functions such as find_pandas_all and
 # aggregate_pandas_all
 logging.info("Reading user actions...")
-run.user_actions_all = find_pandas_all(
-    rsmetrics_db["user_actions"], match_ua
-).iloc[:, 1:]
+
+run.user_actions_all = pd.DataFrame(
+    list(rsmetrics_db["user_actions"].find(match_ua,
+                                           {"_id": 0}))
+)
+
+# it seems that pymongoarrow returns pandas dataframe with
+# convert_dtypes=True, therefore None values are treated as np.nan
+# keep only None for further processing
+run.user_actions_all = run.user_actions_all.replace(np.nan, None)
 
 for _col_id in ['aai_uid', 'user_id', 'source_resource_id',
                 'target_resource_id']:
@@ -284,11 +308,17 @@ if args.provider == "athena":
     ).iloc[:, 1:-1]
 
 else:
-    run.recommendations = aggregate_pandas_all(
-        rsmetrics_db["recommendations"],
-        [{"$match": match_rs},
-         {"$unwind": "$resource_ids"}],
-    ).iloc[:, 1:]
+
+    run.recommendations = \
+        pd.DataFrame(list(
+            rsmetrics_db["recommendations"].aggregate([
+                {"$match": match_rs},
+                {"$unwind": "$resource_ids"}])))
+
+# it seems that pymongoarrow returns pandas dataframe with
+# convert_dtypes=True, therefore None values are treated as np.nan
+# keep only None for further processing
+run.recommendations = run.recommendations.replace(np.nan, None)
 
 run.recommendations.rename(columns={'resource_ids': 'resource_id'},
                            inplace=True)
@@ -326,16 +356,30 @@ else:
 
 logging.info("Reading items...")
 run.items = pd.DataFrame(
-    list(rsmetrics_db["resources"].find({
-        "$and": [
-            {"provider": {"$in": [args.provider]}},
-            {"$or": [{"created_on": {"$lte": args.endtime}},
-                     {"created_on": None}]},
-            {"$or": [{"deleted_on": {"$gte": args.starttime}},
-                     {"deleted_on": None}]},
-        ]},
-        {"_id": 0}))
+    list(rsmetrics_db["resources"].find(
+        {
+            "$and": [
+                {"provider": args.provider},
+                {"type": {"$in":
+                          config['service']['category'][args.provider]}},
+                {"$or": [{"created_on": {"$lte": args.endtime}},
+                         {"created_on": None}]},
+                {"$or": [{"deleted_on": {"$gte": args.starttime}},
+                         {"deleted_on": None}]},
+                {"timestamp": {"$lte": args.endtime}}
+                if (args.endtime and not args.ignore_timestamp) else {},
+                {"timestamp": {"$gte": args.starttime}}
+                if (args.starttime and not args.ignore_timestamp) else {},
+            ]
+        },
+        {"_id": 0}
+    ))
 )
+
+# from duplicates keep the latest entry
+run.items = run.items.sort_values(by='timestamp', ascending=False)
+run.items = run.items.drop_duplicates(subset='id', keep='first')
+
 
 if not args.legacy:
     run.items['id'] = run.items['id'].astype(str)
@@ -407,6 +451,19 @@ try:
         pd.to_datetime(run.user_actions_all["timestamp"])
     )
 
+    # services ids are returned as float with trailing .0,
+    # so they are converted to str(int))
+    # also ignore None values by assign them '0' and then back to None
+    if not args.legacy:
+        for res_id_type in ['source_resource_id', 'target_resource_id']:
+            run.user_actions_all[res_id_type] = \
+                run.user_actions_all[res_id_type].fillna(0).astype(str)
+            run.user_actions_all[res_id_type] = \
+                run.user_actions_all[res_id_type].apply(lambda x: x[:-2] if
+                                                        x[-2:] == '.0' else x)
+            run.user_actions_all[res_id_type] = \
+                run.user_actions_all[res_id_type].replace('0', None)
+
     # remove user actions when item does not exist in items' catalog
     # not-known items (i.e. -1 or None) are not excluded
     # (there is no need to do this for users, since users are already
@@ -415,12 +472,12 @@ try:
     # an string (However, [int] -1 or None indicates not known)
     run.user_actions = run.user_actions_all[
         (run.user_actions_all["source_resource_id"]
-         .isin(run.items["id"].tolist() + [-1, None]))
+         .isin(run.items["id"].tolist() + ['-1', -1, None]))
     ]
 
     run.user_actions = run.user_actions[
         (run.user_actions["target_resource_id"]
-         .isin(run.items["id"].tolist() + [-1, None]))
+         .isin(run.items["id"].tolist() + ['-1', -1, None]))
     ]
 
     run.recommendations["timestamp"] = (
@@ -440,11 +497,13 @@ try:
                                                [-1, None])
     ]
 
+    run.recommendations["resource_id"] =\
+        run.recommendations["resource_id"].astype(str)
     # we have added None which is the new state of unkown resources
     # and -1 for backward compatibility
     run.recommendations = run.recommendations[
         run.recommendations["resource_id"]
-        .isin(run.items["id"].tolist() + [-1, None])
+        .isin(run.items["id"].tolist() + ['-1', -1, None])
     ]
 
 except Exception as e:
@@ -510,14 +569,20 @@ output["metrics"] = metrics
 output["statistics"] = statistics
 output["provider"] = args.provider
 output["schema"] = run.schema
-output["name"] = args.provider + " - " + run.schema
+
+if args.tag is not None:
+    output["name"] = args.provider + " - " + args.tag
+else:
+    output["name"] = args.provider
+
+output["errors"] = run.errors
 
 # this line is necessary in order to store the output to MongoDB
 jsonstr = json.dumps(output, indent=4)
 
 # keep one metrics collection per schema
-rsmetrics_db["metrics"].delete_many({"$and": [{"provider": args.provider},
-                                              {"schema": run.schema}]})
+rsmetrics_db["metrics"].delete_many({"name": output["name"]})
+
 rsmetrics_db["metrics"].insert_one(output)
 
 # result in stdout console (not in logs)

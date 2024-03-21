@@ -4,13 +4,14 @@ import sys
 import csv
 import argparse
 from pymongo import MongoClient
+from datetime import datetime
 
 
 def prep_url(category, item):
     if category == "service":
-        return "services/{}".format(item["slug"])
+        return "services/{}".format(item["pid"])
     elif category == "data_source":
-        return "services/{}".format(item["id"])
+        return "services/{}".format(item["pid"])
     elif category == "training":
         return "trainings/{}".format(item["id"])
     elif category == "guideline":
@@ -22,7 +23,7 @@ def prep_url(category, item):
         return "search/result"
 
 
-def get_items_from_search(endpoint_url, category, providers=[], batch=100,
+def get_items_from_search(endpoint_url, category, provider, batch=100,
                           limit=-1):
     """Given an eosc search service endpoint url and an item category and batch
     number the function tries to call iteratively the json endpoint and
@@ -32,7 +33,7 @@ def get_items_from_search(endpoint_url, category, providers=[], batch=100,
     Args:
         endpoint (string): A valid EOSC search endpoint
         category (string): A category item name (e.g. service, traning)
-        providers (string): A list of providers handling the items
+        provider (string): A provider handling the items
         batch (int): number of how many items to iterate. Max = 100
 
 
@@ -41,6 +42,9 @@ def get_items_from_search(endpoint_url, category, providers=[], batch=100,
         three-item list containing:
         [item_id, item_name, item_path]
     """
+
+    # save items with timestamp
+    timestamp = datetime.utcnow()
 
     # cap batch at 100 items due to the search service max row limit per page
     if batch > 100:
@@ -64,7 +68,7 @@ def get_items_from_search(endpoint_url, category, providers=[], batch=100,
     cursor = ""
 
     while True:
-        url = "{}?rows={}&collection={}&q=*&qf=title".format(
+        url = "{}?rows={}&collection={}&q=*&qf=title&exact=false".format(
             endpoint_url, batch, category
         )
 
@@ -90,11 +94,11 @@ def get_items_from_search(endpoint_url, category, providers=[], batch=100,
                 "created_on": None,
                 "deleted_on": None,
                 "type": category,
-                "ingestion": "batch"
+                "ingestion": "batch",
+                "timestamp": timestamp
             }
 
-            if providers:
-                result["provider"] = providers
+            result["provider"] = provider
 
             if "scientific_domains" in item:
                 result["scientific_domain"] = item["scientific_domains"]
@@ -140,7 +144,7 @@ def output_items_to_csv(items, output):
         writer.writerows(csv_friendly_list)
 
 
-def ouput_items_to_mongo(items, mongo_uri, category, providers,
+def ouput_items_to_mongo(items, mongo_uri, category, provider,
                          clear_prev=True):
     """Gets a list of items and stores them to a mongodb database under
     collection: resources
@@ -150,7 +154,7 @@ def ouput_items_to_mongo(items, mongo_uri, category, providers,
         mongo_uri (string): the mongodb service uri containing the database
         host and the database name
         category: the category of items to be stored
-        providers: the providers of that are handling the items
+        provider: the provider of that is handling the items
         clear_prev (boolean): clear previous results
 
     Returns:
@@ -172,11 +176,11 @@ def ouput_items_to_mongo(items, mongo_uri, category, providers,
 
     result_del = []
 
-    # by default clear previous results
+    # by default NOT clear previous results
     if clear_prev:
         result_del = col.delete_many(
             {
-                "provider": {"$in": providers},
+                "provider": provider,
                 "type": category,
                 "ingestion": "batch",
             }
@@ -187,13 +191,16 @@ def ouput_items_to_mongo(items, mongo_uri, category, providers,
     mc.close()
 
     # return number of inserted items
-    return (len(result.inserted_ids), result_del.deleted_count)
+    return (len(result.inserted_ids),
+            result_del.deleted_count if result_del else 0)
 
 
 # Main logic
 def main(args=None):
 
-    providers = args.providers.split(",")
+    if ',' in args.provider:
+        print("Only one provider is accepted per request")
+        raise
 
     # begin collecting items from url per batch number
     print("Connecting to: {}... and retrieving {} items".format(
@@ -201,7 +208,7 @@ def main(args=None):
         ))
 
     items = get_items_from_search(
-        args.url, args.category, providers, int(args.batch), int(args.limit)
+       args.url, args.category, args.provider, int(args.batch), int(args.limit)
     )
     # output to csv on if argument given
     if args.output:
@@ -212,7 +219,8 @@ def main(args=None):
     if args.datastore:
 
         result_num, result_clear = ouput_items_to_mongo(
-            items, args.datastore, args.category, providers
+            items, args.datastore, args.category, args.provider,
+            clear_prev=False
         )
 
         # if previous items have been cleared display message
@@ -279,11 +287,11 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-p",
-        "--providers",
+        "--provider",
         metavar="STRING",
-        help="Designate which providers handle the items (comma-separated)",
-        required=False,
-        dest="providers",
+        help="Designate which provider handles the items",
+        required=True,
+        dest="provider",
         default="",
     )
     parser.add_argument(

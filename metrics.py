@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import pandas as pd
 import numpy as np
-import re
 
 
 class Runtime:
@@ -16,6 +15,7 @@ class Runtime:
         self.categories = None
         self.scientific_domains = None
         self.provider = None
+        self.errors = []
 
 
 # decorator to add the text attribute to function as major metric
@@ -46,21 +46,15 @@ def pass_on_error(func):
             result = func(*args, **kwargs)
         except Exception as e:
             print('Error occurred in: {}. "{}"'.format(func.__name__, str(e)))
+
+            # find the object which contains the errors variable
+            # append it with function names for those that exceptions occurred
+            _args = list(filter(lambda x: isinstance(x, Runtime), args))
+            if _args:
+                _args[0].errors.append(func.__name__)
+
             return None
-        return result
 
-    return wrapper
-
-
-# decorator to continue the procedure
-# after fatal error in statistic/metric calculation
-def pass_top5_error(func):
-    def wrapper(*args, **kwargs):
-        try:
-            result = func(*args, **kwargs)
-        except Exception as e:
-            print('Error occurred in: {}. "{}"'.format(func.__name__, str(e)))
-            return []
         return result
 
     return wrapper
@@ -134,22 +128,22 @@ def anonymous_users(object):
     return users(object)-registered_users(object)
 
 
-@statistic("The total number of unique published items in the system")
+@statistic("The number of unique published items in the evaluated RS")
 @pass_on_error
 def items(object):
     """
-    Calculate the total number of unique items
+    Calculate the number of unique items
     found in Pandas DataFrame object items (if provided)
     or user_actions otherwise (from both Source and Target item)
     """
     return int(object.items["id"].nunique())
 
 
-@statistic("The total number of recommended items")
+@statistic("The number of recommended items in the evaluated RS")
 @pass_on_error
 def recommended_items(object):
     """
-    Calculate the total number of recommended items
+    Calculate the number of recommended items
     found in Pandas DataFrame object recommendations
     """
     return len(object.recommendations.index)
@@ -157,42 +151,52 @@ def recommended_items(object):
 
 @statistic("The total number of user actions")
 @pass_on_error
-def user_actions(object):
+def user_actions_all(object):
     """
     Calculate the total number of user_actions
+    found in Pandas DataFrame object user_actions
+    """
+    return len(object.user_actions_all.index)
+
+
+@statistic("The number of filtered user actions")
+@pass_on_error
+def user_actions(object):
+    """
+    Calculate the number of filtered user_actions
     found in Pandas DataFrame object user_actions
     """
     return len(object.user_actions.index)
 
 
-@statistic("The total number of user actions occurred by registered users")
+@statistic("The number of filtered user actions occurred by registered users")
 @pass_on_error
 def user_actions_registered(object):
     """
-    Calculate the total number of user_actions occurred by registered users
+    Calculate the number of filtered user_actions occurred by registered users
     found in Pandas DataFrame object user_actions
     """
     return len(object.user_actions[object.user_actions["registered"]].index)
 
 
-@statistic("The total number of user actions occurred by anonymous users")
+@statistic("The number of filtered user actions occurred by anonymous users")
 @pass_on_error
 def user_actions_anonymous(object):
     """
-    Calculate the total number of user_actions occurred by anonymous users
+    Calculate the number of filtered user_actions occurred by anonymous users
     found in Pandas DataFrame object user_actions
     """
     return user_actions(object) - user_actions_registered(object)
 
 
 @statistic(
-    "The percentage (%) of user actions occurred by registered users to the "
-    "total user actions"
+    "The percentage (%) of filtered user actions occurred by registered users "
+    "to the total user actions"
 )
 @pass_on_error
 def user_actions_registered_perc(object):
     """
-    Calculate the percentage (%) of user actions occurred
+    Calculate the percentage (%) of filtered user actions occurred
     by registered users to the total user actions
     found in Pandas DataFrame object user_actions (in two decimals)
     """
@@ -201,13 +205,13 @@ def user_actions_registered_perc(object):
 
 
 @statistic(
-    "The percentage (%) of user actions occurred by anonymous users to the "
-    "total user actions"
+    "The percentage (%) of filtered user actions occurred by anonymous users "
+    "to the total user actions"
 )
 @pass_on_error
 def user_actions_anonymous_perc(object):
     """
-    Calculate the percentage (%) of user actions occurred
+    Calculate the percentage (%) of filtered user actions occurred
     by anonymous users to the total user actions
     found in Pandas DataFrame object user_actions (in two decimals)
     """
@@ -216,7 +220,7 @@ def user_actions_anonymous_perc(object):
 
 @statistic("The total number of item views by the users")
 @pass_on_error
-def item_views(object):
+def item_views_all(object):
     """
     Calculate the total number of user_actions led to item views
     found in Pandas DataFrame object user_actions
@@ -225,7 +229,12 @@ def item_views(object):
     # if the main page of the source and target paths are the same
     # then remove it because it's a walk around the service
     # items apart from services have not walk around implementations
-    _df = object.user_actions.copy()
+
+    _df = object.user_actions_all[
+            (object.user_actions_all["target_resource_id"] != -1)
+            & (object.user_actions_all["target_resource_id"] != '-1')
+            & (object.user_actions_all["target_resource_id"] is not None)
+        ].copy()
 
     if object.schema == 'legacy':
         pattern = r"/services/([^/]+)/"
@@ -245,18 +254,58 @@ def item_views(object):
     return len(_df.index)
 
 
-@statistic("The total number of item views by the registered users")
+@statistic("The number of filtered item views by the users")
+@pass_on_error
+def item_views(object):
+    """
+    Calculate the number of filtered user_actions led to item views
+    found in Pandas DataFrame object user_actions
+    """
+    # if target path is the search page remove it
+    # if the main page of the source and target paths are the same
+    # then remove it because it's a walk around the service
+    # items apart from services have not walk around implementations
+
+    _df = object.user_actions[
+            (object.user_actions["target_resource_id"] != -1)
+            & (object.user_actions["target_resource_id"] != '-1')
+            & (object.user_actions["target_resource_id"] is not None)
+        ].copy()
+
+    if object.schema == 'legacy':
+        pattern = r"/services/([^/]+)/"
+        _df = _df[_df["target_path"].str.match(pattern) &
+                  ~_df["target_path"].str.startswith("/services/c/")]
+
+    else:
+        pattern = r"search%2F(?:all|dataset|software|service" + \
+                  r"|data-source|training|guideline|other)"
+        _df = _df[~_df["target_path"].str.match(pattern)]
+
+    _df['source'] = _df['source_path'].str.extract(r"/services/(.*?)/")
+    _df['target'] = _df['target_path'].str.extract(r"/services/(.*?)/")
+
+    _df = _df[_df['source'] != _df['target']]
+
+    return len(_df.index)
+
+
+@statistic("The number of item views by the registered users")
 @pass_on_error
 def item_views_registered(object):
     """
-    Calculate the total number of user_actions led by registered users
+    Calculate the number of user_actions led by registered users
     led to item views found in Pandas DataFrame object user_actions
     """
     # if target path is the search page remove it
     # if the main page of the source and target paths are the same
     # then remove it because it's a walk around the service
     # items apart from services have not walk around implementations
-    _df = object.user_actions.copy()
+    _df = object.user_actions[
+            (object.user_actions["target_resource_id"] != -1)
+            & (object.user_actions["target_resource_id"] != '-1')
+            & (object.user_actions["target_resource_id"] is not None)
+        ].copy()
 
     if object.schema == 'legacy':
         pattern = r"/services/([^/]+)/"
@@ -278,11 +327,11 @@ def item_views_registered(object):
     return len(_df.index)
 
 
-@statistic("The total number of item views by the anonymous users")
+@statistic("The number of item views by the anonymous users")
 @pass_on_error
 def item_views_anonymous(object):
     """
-    Calculate the total number of user_actions led by anonymous users
+    Calculate the number of user_actions led by anonymous users
     led to item views found in Pandas DataFrame object user_actions
     """
     return item_views(object) - item_views_registered(object)
@@ -840,6 +889,7 @@ def novelty(object):
     ua_serv_view = ua[
         (ua["source_resource_id"] != ua["target_resource_id"])
         & (ua["target_resource_id"] != -1)
+        & (ua["target_resource_id"] != '-1')
         & (ua["target_resource_id"] is not None)
         & (ua[object.id_field].find_registered(object.schema))
     ]
@@ -951,10 +1001,8 @@ def accuracy(object):
 
 
 @metric("The Top 5 recommended items according to recommendations entries")
-@pass_top5_error
-def top5_items_recommended(
-    object, k=5, base="https://marketplace.eosc-portal.eu", anonymous=False
-):
+@pass_on_error
+def top5_items_recommended(object, k=5):
     """
     Calculate the Top 5 recommended items according to
     the recommendations entries.
@@ -969,12 +1017,7 @@ def top5_items_recommended(
     Item's info is being retrieved from the external source
     (i.e. each line forms: item_id, item_name, page_id)
     """
-    # keep recommendations with or without anonymous suggestions
-    # based on anonymous flag (default=False, i.e. ignore anonymous)
-    if anonymous:
-        recs = object.recommendations
-    else:
-        recs = object.recommendations[
+    recs = object.recommendations[
             (object.recommendations[object.id_field]
                 .find_registered(object.schema))
         ]
@@ -1007,6 +1050,20 @@ def top5_items_recommended(
                             .items["id"]
                             .isin([item[0]]))])
 
+        if _df_item["type"].item() in ["service", "data_source"]:
+            url = "https://marketplace.eosc-portal.eu/{}".format(
+                  str(_df_item["path"].item()))
+        elif _df_item["type"].item() in ["training"]:
+            url = "https://search.marketplace.eosc-portal.eu/{}".format(
+                  str(_df_item["path"].item()))
+        else:
+            url = "https://explore.eosc-portal.eu/search/{}?softwareId={}"\
+                  .format(
+                      _df_item["type"].item(), str(_df_item["id"].item())[
+                          len("50|"):].lstrip() if
+                      str(_df_item["id"].item()).startswith("50|") else
+                      str(_df_item["id"].item()))
+
         # append a list with the elements:
         #   (i) item id
         #  (ii) item name
@@ -1019,11 +1076,7 @@ def top5_items_recommended(
             {
                 "item_id": item[0],
                 "item_name": str(_df_item["name"].item()),
-                "item_url": re.sub(r'(?<!https:)//', '/', '{}{}'.format(
-                                  base if 'services/' in
-                                  str(_df_item["path"].item()) else
-                                  'https://search.marketplace.eosc-portal.eu/',
-                                  str(_df_item["path"].item()))),
+                "item_url": url,
                 "recommendations": {
                     "value": item[1],
                     "percentage": round(100 * item[1] / len(recs.index), 2),
@@ -1035,13 +1088,11 @@ def top5_items_recommended(
     return topk_items
 
 
-@metric("The Top 5 ordered items according to user actions entries")
-@pass_top5_error
-def top5_items_ordered(
-    object, k=5, base="https://marketplace.eosc-portal.eu", anonymous=False
-):
+@metric("The Top 5 viewed items according to user actions entries")
+@pass_on_error
+def top5_items_viewed(object, k=5):
     """
-    Calculate the Top 5 ordered items according to user actions entries.
+    Calculate the Top 5 viewed items according to user actions entries.
     User actions with Target Pages that lead to unknown items (=-1)
     are being ignored.
     Return a list of list with the elements:
@@ -1053,28 +1104,32 @@ def top5_items_ordered(
         #       expressed in %, with or without anonymous,
         #       based on the function's flag
     """
-    # keep user actions with or without anonymous suggestions
-    # based on anonymous flag (default=False, i.e. ignore anonymous)
-    # user_actions with Target Pages that lead to unknown items (=-1)
-    # are being ignored
-    if anonymous:
-        uas = object.user_actions[
-            (object.user_actions["reward"] == 1.0)
-            & (object.user_actions["target_resource_id"] != -1)
-            & (object.user_actions["target_resource_id"] is not None)
-            & (object.user_actions[object.id_field]
-                .find_registered(object.schema))
-        ]
-    else:
-        uas = object.user_actions[
-            (object.user_actions["reward"] == 1.0)
-            & (object.user_actions["target_resource_id"] != -1)
+    uas = object.user_actions[
+            (object.user_actions["target_resource_id"] != -1)
+            & (object.user_actions["target_resource_id"] != '-1')
             & (object.user_actions["target_resource_id"] is not None)
         ]
 
+    _df = uas.copy()
+
+    if object.schema == 'legacy':
+        pattern = r"/services/([^/]+)/"
+        _df = _df[_df["target_path"].str.match(pattern) &
+                  ~_df["target_path"].str.startswith("/services/c/")]
+
+    else:
+        pattern = r"search%2F(?:all|dataset|software|service" + \
+                  r"|data-source|training|guideline|other)"
+        _df = _df[~_df["target_path"].str.match(pattern)]
+
+    _df['source'] = _df['source_path'].str.extract(r"/services/(.*?)/")
+    _df['target'] = _df['target_path'].str.extract(r"/services/(.*?)/")
+
+    uas = _df[_df['source'] != _df['target']]
+
     # item_count
     # group user_actions entries by item id and
-    # then count how many times each item has been suggested
+    # then count how many times each item has been viewed
     gr_item = uas.groupby(["target_resource_id"]).count()
 
     # create a dictionary of item_count in order to
@@ -1096,6 +1151,21 @@ def top5_items_ordered(
     for item in l_item:
         # get items's info from dataframe
         _df_item = object.items[object.items["id"].isin([item[0]])]
+
+        if _df_item["type"].item() in ["service", "data_source"]:
+            url = "https://marketplace.eosc-portal.eu/{}".format(
+                  str(_df_item["path"].item()))
+        elif _df_item["type"].item() in ["training"]:
+            url = "https://search.marketplace.eosc-portal.eu/{}".format(
+                  str(_df_item["path"].item()))
+        else:
+            url = "https://explore.eosc-portal.eu/search/{}?softwareId={}"\
+                  .format(
+                      _df_item["type"].item(), str(_df_item["id"].item())[
+                          len("50|"):].lstrip() if
+                      str(_df_item["id"].item()).startswith("50|") else
+                      str(_df_item["id"].item()))
+
         # append a list with the elements:
         #   (i) item id
         #  (ii) item name
@@ -1108,11 +1178,7 @@ def top5_items_ordered(
             {
                 "item_id": item[0],
                 "item_name": str(_df_item["name"].item()),
-                "item_url": re.sub(r'(?<!https:)//', '/', '{}{}'.format(
-                                  base if 'services/' in
-                                  str(_df_item["path"].item()) else
-                                  'https://search.marketplace.eosc-portal.eu/',
-                                  str(_df_item["path"].item()))),
+                "item_url": url,
                 "orders": {
                     "value": item[1],
                     "percentage": round(100 * item[1] / len(uas.index), 2),
@@ -1125,7 +1191,7 @@ def top5_items_ordered(
 
 
 # internal function
-def __top5_recommended(object, k=5, element='category', anonymous=False):
+def __top5_recommended(object, k=5, element='category'):
     """
     Calculate the Top 5 recommended elements according to
     the recommendations entries.
@@ -1138,12 +1204,7 @@ def __top5_recommended(object, k=5, element='category', anonymous=False):
         #       based on the function's flag
     Element's info is being retrieved from the marketplace_rs MongoDB source
     """
-    # keep recommendations with or without anonymous suggestions
-    # based on anonymous flag (default=False, i.e. ignore anonymous)
-    if anonymous:
-        recs = object.recommendations
-    else:
-        recs = object.recommendations[
+    recs = object.recommendations[
             (object.recommendations[object.id_field]
                 .find_registered(object.schema))
         ]
@@ -1223,9 +1284,9 @@ def __top5_recommended(object, k=5, element='category', anonymous=False):
 
 
 # internal function
-def __top5_ordered(object, element='category', k=5, anonymous=False):
+def __top5_viewed(object, element='category', k=5):
     """
-    Calculate the Top 5 ordered elements according to user actions entries.
+    Calculate the Top 5 viewed elements according to user actions entries.
     Return a list of list with the elements:
         #  (i) element id
         #  (ii) element name (according to element collection)
@@ -1235,22 +1296,28 @@ def __top5_ordered(object, element='category', k=5, anonymous=False):
         #       based on the function's flag
     Element's info is being retrieved from the marketplace_rs MongoDB source
     """
-    # keep user actions with or without anonymous suggestions
-    # based on anonymous flag (default=False, i.e. ignore anonymous)
-    # user_actions with Target Pages that lead to unknown items (=-1)
-    # are being ignored
-    if anonymous:
-        uas = object.user_actions[
-            (object.user_actions["reward"] == 1.0)
-            & (object.user_actions["target_resource_id"] != -1)
-            & (object.user_actions[object.id_field]
-                .find_registered(object.schema))
+    uas = object.user_actions[
+            (object.user_actions["target_resource_id"] != -1)
+            & (object.user_actions["target_resource_id"] != '-1')
+            & (object.user_actions["target_resource_id"] is not None)
         ]
+
+    _df = uas.copy()
+
+    if object.schema == 'legacy':
+        pattern = r"/services/([^/]+)/"
+        _df = _df[_df["target_path"].str.match(pattern) &
+                  ~_df["target_path"].str.startswith("/services/c/")]
+
     else:
-        uas = object.user_actions[
-            (object.user_actions["reward"] == 1.0)
-            & (object.user_actions["target_resource_id"] != -1)
-        ]
+        pattern = r"search%2F(?:all|dataset|software|service" + \
+                  r"|data-source|training|guideline|other)"
+        _df = _df[~_df["target_path"].str.match(pattern)]
+
+    _df['source'] = _df['source_path'].str.extract(r"/services/(.*?)/")
+    _df['target'] = _df['target_path'].str.extract(r"/services/(.*?)/")
+
+    uas = _df[_df['source'] != _df['target']]
 
     # rename the column at a copy (not in place) for more readable processing
     _items = object.items.rename(columns={'id': 'target_resource_id'})
@@ -1329,29 +1396,27 @@ def __top5_ordered(object, element='category', k=5, anonymous=False):
 
 @metric("The Top 5 recommended categories according to recommendations entries"
         )
-@pass_top5_error
-def top5_categories_recommended(object, k=5, anonymous=False):
-    return __top5_recommended(object, k=5, element='category', anonymous=False)
+@pass_on_error
+def top5_categories_recommended(object, k=5):
+    return __top5_recommended(object, k=5, element='category')
 
 
 @metric("The Top 5 recommended scientific domains according to recommendations\
 entries")
-@pass_top5_error
-def top5_scientific_domains_recommended(object, k=5, anonymous=False):
-    return __top5_recommended(object, k=5, element='scientific_domain',
-                              anonymous=False)
+@pass_on_error
+def top5_scientific_domains_recommended(object, k=5):
+    return __top5_recommended(object, k=5, element='scientific_domain')
 
 
-@metric("The Top 5 ordered categories according to recommendations entries"
+@metric("The Top 5 viewed categories according to recommendations entries"
         )
-@pass_top5_error
-def top5_categories_ordered(object, k=5, anonymous=False):
-    return __top5_ordered(object, k=5, element='category', anonymous=False)
+@pass_on_error
+def top5_categories_viewed(object, k=5):
+    return __top5_viewed(object, k=5, element='category')
 
 
-@metric("The Top 5 ordered scientific domains according to recommendations\
+@metric("The Top 5 viewed scientific domains according to recommendations\
 entries")
-@pass_top5_error
-def top5_scientific_domains_ordered(object, k=5, anonymous=False):
-    return __top5_ordered(object, k=5, element='scientific_domain',
-                          anonymous=False)
+@pass_on_error
+def top5_scientific_domains_viewed(object, k=5):
+    return __top5_viewed(object, k=5, element='scientific_domain')

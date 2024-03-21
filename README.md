@@ -1,5 +1,8 @@
 # Recommender Metrics Framework
 A framework for generating statistics, metrics, KPIs, and graphs for Recommender Systems
+<a href="https://eu.badgr.com/public/assertions/YWmU9yPvQxumUgd1vnPPSw">
+<img src="https://api.eu.badgr.io/public/assertions/YWmU9yPvQxumUgd1vnPPSw/image" width="4%"/>
+</a>
 
 <p align="center">
 <a href="https://github.com/ARGOeu/eosc-recommender-metrics/blob/ec222c3090892f33056086b8d30c18f713da519d/website/docs/static/img/flow.png">
@@ -55,8 +58,13 @@ A framework for generating statistics, metrics, KPIs, and graphs for Recommender
 ./rsmetrics.py -p athena # same procedure as the first one for 'athena' provider
 ```
 
+10. A typical `rsmetrics.py` command for a monthly report, would be:
+```bash
+./rsmetrics.py -p provider -s $(date +"%Y-%m-01") -e $(date +"%Y-%m-%d") -t "$(date +"%B %Y")"
+```
+
 ### Usage of the Streaming System
-10. Run from terminal `./rs-stream.py` in order to listen to the stream for new data, process them, and store them in the `Datastore`, concerning that particular provider:
+11. Run from terminal `./rs-stream.py` in order to listen to the stream for new data, process them, and store them in the `Datastore`, concerning that particular provider:
 ```bash
 ./rs-stream.py -a username:password -q host:port -t user_actions -d ""mongodb://localhost:27017/datastore"" -p provider_name
 ```
@@ -157,4 +165,30 @@ You can override this by editing the `.env` file inside the `/webservice` folder
 
 _Tested with python 3.9_
 
+#### Monitor for entries in the MongoDB collections
+A typical example that counts the documents found in `user_actions`, `recommendations`, and `resources` for 1 day ago would be:
+```bash
+./monitor.py -d "mongodb://localhost:27017/rsmetrics" -s "$(date -u -d '1 day ago' '+%Y-%m-%d')" -e "$(date -u '+%Y-%m-%d')"
+```
 
+E-mail send over SMTP for the above example:
+```bash
+./monitor.py -d "mongodb://localhost:27017/rsmetrics" -s "$(date -u -d '1 day ago' '+%Y-%m-%d')" -e "$(date -u '+%Y-%m-%d')" --email "smtp://server:port" sender@domain recipient1@domain recipient2@domain
+
+```
+
+#### Export Capacity information for entries in the MongoDB collections
+A typical example that counts the documents found in `user_actions`, `recommendations`, and `resources` for 1 year ago would be:
+```bash
+./monitor.py -d "mongodb://localhost:27017/rsmetrics" -s "$(date -u -d '1 day ago' '+%Y-%m-%d')" -e "$(date -u '+%Y-%m-%d')" --capacity
+```
+which will return results in CSV format of `year,month,user_actions,recommendations`
+
+Additionally, capacity can be plotted:
+
+```bash
+./monitor.py -d "mongodb://localhost:27017/rsmetrics" -s "$(date -u -d '1 day ago' '+%Y-%m-%d')" -e "$(date -u '+%Y-%m-%d')" --capacity --plot
+```
+
+## Deployment docs
+Installation and configuration documents can be found [here](docs).
