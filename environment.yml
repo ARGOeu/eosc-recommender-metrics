@@ -49,12 +49,12 @@ dependencies:
     - numpy==1.22.3
     - packaging==23.2
     - pandas==1.4.2
-    - pillow==10.1.0
-    - pyarrow==11.0.0
+    - pillow==10.2.0
+    - pyarrow==14.0.1
     - pycodestyle==2.10.0
     - pyflakes==3.0.1
-    - pymongo==4.1.0
-    - pymongoarrow==0.7.0
+    - pymongo==4.4.0
+    - pymongoarrow==1.2.0
     - pyparsing==3.1.1
     - python-dateutil==2.8.2
     - python-dotenv==0.20.0
