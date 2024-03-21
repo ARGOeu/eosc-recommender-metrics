@@ -18,11 +18,11 @@ natsort==8.2.0
 numpy==1.23.3
 packaging==23.2
 pandas==1.4.4
-Pillow==10.1.0
+Pillow==10.2.0
 platformdirs==2.5.2
-pyarrow==11.0.0
-pymongo==4.2.0
-pymongoarrow==0.7.0
+pyarrow==14.0.1
+pymongo==4.4.0
+pymongoarrow==1.2.0
 pyparsing==3.1.1
 python-dateutil==2.8.2
 python-dotenv==0.20.0
