@@ -10,7 +10,7 @@ filelock==3.8.0
 flask==3.0.0
 flask-pymongo==2.3.0
 fonttools==4.46.0
-idna==3.3
+idna==3.7
 importlib-resources==6.1.1
 kiwisolver==1.4.5
 matplotlib==3.7.4
