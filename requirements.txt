@@ -1,5 +1,5 @@
 beautifulsoup4==4.11.1
-certifi==2022.6.15.1
+certifi==2024.7.4
 charset-normalizer==2.1.1
 contourpy==1.1.1
 cycler==0.12.1
