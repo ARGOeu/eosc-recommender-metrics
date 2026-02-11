@@ -18,7 +18,7 @@ natsort==8.2.0
 numpy==1.23.3
 packaging==23.2
 pandas==1.4.4
-Pillow==10.3.0
+Pillow==12.1.1
 platformdirs==2.5.2
 pyarrow==14.0.1
 pymongo==4.6.3
